@@ -3,6 +3,8 @@ Para este laboratorio se implementó como algoritmo de corrección de errores lo
 
 Cabe destacar que para poder ejecutarlo solo hace falta tener el compilador `g++`, `python3` y una terminal `bash`.
 
+Para este laboratorio, las modificaciones se hicieron aleatoriamente, pasando manualmente los parámetros necesarios a cada lenguaje de forma separada, observable en los archivos de los escenarios con extensión `.sh`, en el cual se puede modificar qué envía y qué recibe cada algoritmo de forma indistinta.
+
 ### Laboratorio Completo
 ```
 ./main.sh
