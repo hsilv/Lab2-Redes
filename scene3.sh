@@ -14,7 +14,8 @@ input3="1101"
 flip_random_bit() {
     local binary_string=$1
     local length=${#binary_string}
-    local num_bits_to_flip=$((RANDOM % (length - 2) + 2))
+    local max_flips=$((length / 3))
+    local num_bits_to_flip=$((RANDOM % max_flips + 1))
     local flipped_string=$binary_string
     local random_index
     local flipped_bit
