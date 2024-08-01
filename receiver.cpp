@@ -1,15 +1,15 @@
 #include <iostream>
 #include <string>
+#include <cstring>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
 #include <vector>
 #include <bitset>
 #include <cstdint>
 #include <cmath>
-using namespace std;
-
-#include <iostream>
-#include <string>
-#include <vector>
-
+#include <jsoncpp/json/json.h>
 using namespace std;
 
 string decode_hamming(const string &data)
@@ -95,6 +95,7 @@ string decode_hamming(const string &data)
         else
         {
             cout << "Errors detected and corrected. Corrected message: " << data_bits << endl;
+            return data_bits;
         }
         return "";
     }
@@ -165,30 +166,113 @@ string decode_crc32(const string &data)
     }
 }
 
-int main(int argc, char *argv[])
+string binary_to_ascii(const string &data)
 {
-    if (argc < 3)
+    string ascii = "";
+    for (size_t i = 0; i < data.size(); i += 8)
     {
-        cerr << "Usage: " << argv[0] << " <data> <-Ha|-CRC>" << endl;
+        bitset<8> byte(data.substr(i, 8));
+        ascii += static_cast<char>(byte.to_ulong());
+    }
+    return ascii;
+}
+
+int main()
+{
+    int server_fd, new_socket;
+    struct sockaddr_in address;
+    int opt = 1;
+    int addrlen = sizeof(address);
+    char buffer[1024] = {0};
+
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
+    {
+        cerr << "Error al crear el socket" << endl;
         return 1;
     }
 
-    string data = argv[1];
-    string option = argv[2];
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
+    {
+        cerr << "Error en setsockopt" << endl;
+        close(server_fd);
+        return 1;
+    }
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(65432);
 
-    if (option == "-Ha")
+    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
+    {
+        cerr << "Error en bind" << endl;
+        close(server_fd);
+        return 1;
+    }
+    if (listen(server_fd, 3) < 0)
+    {
+        cerr << "Error en listen" << endl;
+        close(server_fd);
+        return 1;
+    }
+    if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0)
+    {
+        cerr << "Error en accept" << endl;
+        close(server_fd);
+        return 1;
+    }
+
+    int valread = read(new_socket, buffer, 1024);
+    if (valread < 0)
+    {
+        cerr << "Error al leer del socket" << endl;
+        close(new_socket);
+        close(server_fd);
+        return 1;
+    }
+
+    string received_data(buffer, valread);
+    Json::Value root;
+    Json::CharReaderBuilder reader;
+    string errs;
+
+    istringstream sstr(received_data);
+    if (!Json::parseFromStream(reader, sstr, &root, &errs))
+    {
+        cerr << "Error al parsear JSON: " << errs << endl;
+        close(new_socket);
+        close(server_fd);
+        return 1;
+    }
+
+    string data = root["data"].asString();
+    string option = root["algorithm"].asString();
+
+    if (option == "Hamming")
     {
         string decoded_data = decode_hamming(data);
+        decoded_data = binary_to_ascii(decoded_data);
+        if (decoded_data.empty())
+        {
+            close(new_socket);
+            close(server_fd);
+            return 1;
+        }
+        cout << "Datos decodificados (Hamming): " << decoded_data << endl;
     }
-    else if (option == "-CRC")
+    else if (option == "Cyclic Redundancy Check (CRC32)")
     {
         string decoded_data = decode_crc32(data);
+        decoded_data = binary_to_ascii(decoded_data);
+        cout << "Datos decodificados (CRC): " << decoded_data << endl;
     }
     else
     {
-        cerr << "Unknown option: " << option << endl;
+        cerr << "Opción desconocida: " << option << endl;
+        close(new_socket);
+        close(server_fd);
         return 1;
     }
 
+    close(new_socket);
+    close(server_fd);
     return 0;
 }
